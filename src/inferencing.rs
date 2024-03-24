@@ -6,11 +6,11 @@ use candle_transformers::models::quantized_mixformer::Config;
 use candle_transformers::models::quantized_mixformer::MixFormerSequentialForCausalLM as QMixFormer;
 use tokenizers::Tokenizer;
 
-const MODEL_PATH_PREFIX: &'static str = "D:\\models\\phi-2";
+const MSPHI2_PATH_PREFIX: &'static str = "D:\\models\\phi-2";
 const DOLPHIN_PATH_PREFIX: &'static str = "D:\\models\\dolphin_2.6";
 
 pub fn load_model() -> (Phi, Tokenizer) {
-    let config_filename = std::path::PathBuf::from(format!("{MODEL_PATH_PREFIX}\\config.json"));
+    let config_filename = std::path::PathBuf::from(format!("{MSPHI2_PATH_PREFIX}\\config.json"));
 
     let config = std::fs::read_to_string(config_filename)
         .ok()
@@ -21,10 +21,10 @@ pub fn load_model() -> (Phi, Tokenizer) {
 
     let filesnames = vec![
         std::path::PathBuf::from(format!(
-            "{MODEL_PATH_PREFIX}\\model-00001-of-00002.safetensors"
+            "{MSPHI2_PATH_PREFIX}\\model-00001-of-00002.safetensors"
         )),
         std::path::PathBuf::from(format!(
-            "{MODEL_PATH_PREFIX}\\model-00002-of-00002.safetensors"
+            "{MSPHI2_PATH_PREFIX}\\model-00002-of-00002.safetensors"
         )),
     ];
 
@@ -34,7 +34,7 @@ pub fn load_model() -> (Phi, Tokenizer) {
             .expect("Failed to get files")
     };
 
-    let tokenizer = Tokenizer::from_file(format!("{MODEL_PATH_PREFIX}\\tokenizer.json"))
+    let tokenizer = Tokenizer::from_file(format!("{MSPHI2_PATH_PREFIX}\\tokenizer.json"))
         .expect("Failed to load tokenizer.json");
 
     (
