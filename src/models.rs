@@ -2,6 +2,12 @@ use candle_core::{DType, Device, Tensor};
 use candle_transformers::generation::LogitsProcessor;
 use candle_transformers::models::phi::Model as Phi;
 use candle_transformers::models::quantized_mixformer::MixFormerSequentialForCausalLM as QMixFormer;
+use diesel::deserialize::{Queryable, QueryableByName};
+use diesel::prelude::Insertable;
+use diesel::query_dsl::methods::{LimitDsl, OrderDsl};
+use diesel_async::{AsyncPgConnection, RunQueryDsl};
+use pgvector::Vector;
+use pgvector::VectorExpressionMethods;
 use tokenizers::Tokenizer;
 
 pub enum Model {
@@ -113,5 +119,69 @@ impl TextGeneration {
             response += &token;
         }
         return response;
+    }
+}
+
+#[derive(Insertable)]
+#[diesel(table_name=crate::schema::items)]
+
+struct ItemsInsertable {
+    chunk_number: Option<i32>,
+    title: String,
+    content: Option<String>,
+    embedding: Option<Vector>,
+}
+
+#[derive(Queryable, QueryableByName)]
+#[diesel(table_name=crate::schema::items)]
+struct Items {
+    pub id: i32,
+    pub chunk_number: Option<i32>,
+    pub title: String,
+    pub content: Option<String>,
+    pub embedding: Option<Vector>,
+}
+
+impl Items {
+    async fn new(
+        chunk_number: Option<i32>,
+        title: String,
+        content: Option<String>,
+        embedding: Option<Vector>,
+    ) -> Self {
+        Self {
+            id: 0,
+            chunk_number,
+            title,
+            content,
+            embedding,
+        }
+    }
+    async fn insert(&self, conn: &mut AsyncPgConnection) -> Result<(), diesel::result::Error> {
+        ItemsInsertable {
+            chunk_number: self.chunk_number,
+            title: self.title.clone(),
+            content: self.content.clone(),
+            embedding: self.embedding.clone(),
+        }
+        .insert_into(crate::schema::items::table)
+        .execute(conn)
+        .await?;
+        Ok(())
+    }
+    async fn get_cosine_similar(
+        conn: &mut AsyncPgConnection,
+        query: Option<Vector>,
+        limit: i64,
+    ) -> Result<Vec<Self>, diesel::result::Error> {
+        use crate::schema::items;
+
+        let res = items::table
+            .order(items::embedding.cosine_distance(query))
+            .limit(limit)
+            .load::<Self>(conn)
+            .await?;
+
+        return Ok(res);
     }
 }

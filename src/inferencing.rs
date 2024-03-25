@@ -73,9 +73,9 @@ pub fn question(query: &str, pipeline: &mut TextGeneration) -> String {
 }
 
 pub fn single_query(query: &str, pipeline: &mut TextGeneration) -> String {
-    let system_message: String = format!("<|im_start|>system\nAs a friendly and helpful AI assistant named Abu. Your answer should be very concise and to the point. Do not repeat question or references. Today is {date}", date=chrono::Local::now().format("%A, %B %e, %Y"));
+    let system_message: String = format!("<|im_start|>system\nAs a friendly and helpful AI assistant named Abu. Your answer should be very concise and to the point. Do not repeat question or references.<|im_end|>\n");
 
-    let question = format!("<|im_end|>\n<|im_start|>user\nquestion: \"{query}\"\"\n<|im_end|>\n<|im_start|>assistant\n");
+    let question = format!("<|im_start|>user\nquestion: \"{query}\"\"\n<|im_end|>\n<|im_start|>assistant\n");
 
     let prompt = system_message + &question;
 
