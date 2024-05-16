@@ -1,5 +1,7 @@
+use anyhow::{Error as E, Result};
 use candle_core::{DType, Device, Tensor};
 use candle_transformers::generation::LogitsProcessor;
+use candle_transformers::models::bert::BertModel;
 use candle_transformers::models::phi::Model as Phi;
 use candle_transformers::models::quantized_mixformer::MixFormerSequentialForCausalLM as QMixFormer;
 use diesel::deserialize::{Queryable, QueryableByName};
@@ -13,6 +15,16 @@ use tokenizers::Tokenizer;
 pub enum Model {
     Quantized(QMixFormer),
     SafeTensor(Phi),
+}
+
+pub enum EmbeddingModelType {
+    SafeTensor(BertModel),
+    TorchModel(BertModel),
+}
+
+pub enum ModelType {
+    GGUF,
+    SafeTensor,
 }
 
 pub struct TextGeneration {
@@ -50,47 +62,27 @@ impl TextGeneration {
         }
     }
 
-    pub fn run(&mut self, prompt: &str, sample_len: usize) -> String {
+    pub fn run(&mut self, prompt: &str, sample_len: usize) -> Result<String> {
         let mut response: String = String::new();
 
-        use std::io::Write;
-        let tokens = self
-            .tokenizer
-            .encode(prompt, true)
-            .ok()
-            .expect("Failed to encode prompt");
+        let tokens = self.tokenizer.encode(prompt, true).map_err(E::msg)?;
         if tokens.is_empty() {
-            panic!("Empty prompts are not supported in the phi model.")
-        }
-        if self.verbose_prompt {
-            for (token, id) in tokens.get_tokens().iter().zip(tokens.get_ids().iter()) {
-                let token = token.replace('▁', " ").replace("<0x0A>", "\n");
-                println!("{id:7} -> '{token}'");
-            }
+            anyhow::bail!("Empty prompts are not supported in the phi model.")
         }
         let mut tokens = tokens.get_ids().to_vec();
         let eos_token = match self.tokenizer.get_vocab(true).get("<|endoftext|>") {
             Some(token) => *token,
             None => panic!("cannot find the endoftext token"),
         };
-        std::io::stdout().flush().expect("Unable to Flush Stdout");
         for index in 0..sample_len {
             let context_size = if index > 0 { 1 } else { tokens.len() };
             let ctxt = &tokens[tokens.len().saturating_sub(context_size)..];
-            let input = Tensor::new(ctxt, &self.device)
-                .expect("Unable get Input Tensor")
-                .unsqueeze(0)
-                .ok()
-                .expect("Failed to get Input ensort final");
+            let input = Tensor::new(ctxt, &self.device)?.unsqueeze(0)?;
             let logits = match &mut self.model {
-                Model::Quantized(m) => m.forward(&input).ok().expect("Failed to logits Tensor"),
-                Model::SafeTensor(m) => m.forward(&input).ok().expect("Failed to logits Tensor"),
+                Model::Quantized(m) => m.forward(&input)?,
+                Model::SafeTensor(m) => m.forward(&input)?,
             };
-            let logits = logits
-                .squeeze(0)
-                .expect("Failed to logits 2 Tensor")
-                .to_dtype(DType::F32)
-                .expect("Failed to logits 2 Tensor Final");
+            let logits = logits.squeeze(0)?.to_dtype(DType::F32)?;
             let logits = if self.repeat_penalty == 1. {
                 logits
             } else {
@@ -99,26 +91,19 @@ impl TextGeneration {
                     &logits,
                     self.repeat_penalty,
                     &tokens[start_at..],
-                )
-                .expect("Unable to apply repeated penalty")
+                )?
             };
 
-            let next_token = self
-                .logits_processor
-                .sample(&logits)
-                .expect("Unable to get next token");
+            let next_token = self.logits_processor.sample(&logits)?;
             tokens.push(next_token);
             if next_token == eos_token || next_token == 198 {
                 break;
             }
-            let token = self
-                .tokenizer
-                .decode(&[next_token], true)
-                .expect("Failed to get token");
+            let token = self.tokenizer.decode(&[next_token], true).map_err(E::msg)?;
 
             response += &token;
         }
-        return response;
+        return Ok(response);
     }
 }
 
